@@ -1,0 +1,128 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">RefactorFlow social preview</title>
+  <desc id="desc">Technical social preview graphic for RefactorFlow, an AI-assisted bounded refactor workflow kit with a YAML-first, state-machine driven process.</desc>
+  <defs>
+    <linearGradient id="bg" x1="80" y1="32" x2="1220" y2="608" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D1824"/>
+      <stop offset="0.58" stop-color="#091119"/>
+      <stop offset="1" stop-color="#050A10"/>
+    </linearGradient>
+    <linearGradient id="panelStroke" x1="700" y1="60" x2="1210" y2="580" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4FE0C1" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#F3A84E" stop-opacity="0.25"/>
+    </linearGradient>
+    <linearGradient id="lineGlow" x1="720" y1="240" x2="1160" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4FE0C1"/>
+      <stop offset="1" stop-color="#58B4FF"/>
+    </linearGradient>
+    <linearGradient id="chipFill" x1="0" y1="0" x2="240" y2="42" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#112130"/>
+      <stop offset="1" stop-color="#0C1823"/>
+    </linearGradient>
+    <radialGradient id="glowTeal" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1110 122) rotate(130.816) scale(324.102 249.699)">
+      <stop stop-color="#37D3B4" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#37D3B4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowAmber" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(278 556) rotate(-9.913) scale(350.264 188.675)">
+      <stop stop-color="#F3A84E" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#F3A84E" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" stroke="#D6E7F5" stroke-opacity="0.07"/>
+    </pattern>
+    <filter id="softBlur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="20"/>
+    </filter>
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#031019" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" rx="28" fill="url(#bg)"/>
+  <rect width="1280" height="640" rx="28" fill="url(#grid)"/>
+  <circle cx="1110" cy="122" r="320" fill="url(#glowTeal)" filter="url(#softBlur)"/>
+  <circle cx="278" cy="556" r="286" fill="url(#glowAmber)" filter="url(#softBlur)"/>
+
+  <g opacity="0.28">
+    <path d="M688 74H1206" stroke="#8CC8FF" stroke-opacity="0.18"/>
+    <path d="M1186 74V566" stroke="#8CC8FF" stroke-opacity="0.18"/>
+    <path d="M688 566H1206" stroke="#8CC8FF" stroke-opacity="0.18"/>
+    <path d="M688 74V566" stroke="#8CC8FF" stroke-opacity="0.18"/>
+  </g>
+
+  <g>
+    <text x="86" y="108" fill="#78DCC8" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="18" letter-spacing="3.2">AI-ASSISTED BOUNDED REFACTOR WORKFLOW KIT</text>
+    <text x="84" y="230" fill="#F3F7FB" font-family="'Avenir Next', 'Segoe UI', sans-serif" font-size="92" font-weight="700" letter-spacing="-3.4">RefactorFlow</text>
+    <text x="87" y="288" fill="#BDD5E7" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="32" font-weight="500">YAML-first control for reviewable refactor slices.</text>
+    <text x="87" y="336" fill="#93A8BA" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="24">Keeps coding agents productive without letting scope outrun</text>
+    <text x="87" y="368" fill="#93A8BA" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="24">human review, validation, or state visibility.</text>
+  </g>
+
+  <g filter="url(#cardShadow)">
+    <rect x="84" y="416" width="186" height="44" rx="22" fill="url(#chipFill)" stroke="#27465B"/>
+    <rect x="286" y="416" width="228" height="44" rx="22" fill="url(#chipFill)" stroke="#27465B"/>
+    <rect x="530" y="416" width="194" height="44" rx="22" fill="url(#chipFill)" stroke="#27465B"/>
+    <text x="112" y="444" fill="#DDEAF2" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="17">YAML-FIRST</text>
+    <text x="314" y="444" fill="#DDEAF2" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="17">REVIEWABLE SLICES</text>
+    <text x="558" y="444" fill="#DDEAF2" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="17">STATE MACHINE</text>
+  </g>
+
+  <g filter="url(#cardShadow)">
+    <rect x="84" y="498" width="574" height="74" rx="22" fill="#0B141D" stroke="#243B4B"/>
+    <text x="114" y="527" fill="#78DCC8" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="16" letter-spacing="2.2">FLOW CONTRACT</text>
+    <text x="114" y="554" fill="#E6F0F7" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="24" font-weight="600">AI-assisted</text>
+    <text x="286" y="554" fill="#E6F0F7" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="24" font-weight="600">Codex-friendly</text>
+    <text x="496" y="554" fill="#E6F0F7" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="24" font-weight="600">Human-reviewed</text>
+    <path d="M237 533V560" stroke="#233A4C"/>
+    <path d="M451 533V560" stroke="#233A4C"/>
+  </g>
+
+  <g filter="url(#cardShadow)">
+    <rect x="688" y="74" width="518" height="492" rx="28" fill="#0A121A" fill-opacity="0.74" stroke="url(#panelStroke)" stroke-width="1.2"/>
+    <text x="720" y="110" fill="#78DCC8" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="16" letter-spacing="2.4">WORKFLOW GRAPH</text>
+    <text x="1058" y="110" fill="#93A8BA" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="14">JSON-FIRST CLI</text>
+
+    <rect x="720" y="132" width="230" height="114" rx="18" fill="#0F1B26" stroke="#264357"/>
+    <text x="740" y="160" fill="#F1F7FB" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="15">manifest:</text>
+    <text x="740" y="188" fill="#78DCC8" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="15">  state: implementing</text>
+    <text x="740" y="214" fill="#A9C6D7" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="15">  lane: core-import-cleanup</text>
+    <text x="740" y="240" fill="#F3A84E" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="15">  validation: focused_test</text>
+
+    <rect x="970" y="132" width="202" height="114" rx="18" fill="#0F1B26" stroke="#264357"/>
+    <text x="990" y="160" fill="#F1F7FB" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="15">current_slice</text>
+    <text x="990" y="188" fill="#A9C6D7" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="15">scope: install path</text>
+    <text x="990" y="214" fill="#A9C6D7" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="15">risk: low</text>
+    <text x="990" y="240" fill="#78DCC8" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="15">status: reviewable</text>
+
+    <path d="M840 286V314" stroke="url(#lineGlow)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M840 364V392" stroke="url(#lineGlow)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M840 442V470" stroke="url(#lineGlow)" stroke-width="3" stroke-linecap="round"/>
+    <path d="M889 353H1014" stroke="url(#lineGlow)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="8 10"/>
+
+    <g>
+      <rect x="752" y="314" width="176" height="50" rx="16" fill="#102534" stroke="#31556F"/>
+      <rect x="752" y="392" width="176" height="50" rx="16" fill="#102534" stroke="#31556F"/>
+      <rect x="752" y="470" width="176" height="50" rx="16" fill="#102534" stroke="#31556F"/>
+      <rect x="1014" y="328" width="132" height="50" rx="16" fill="#271A14" stroke="#7C5230"/>
+      <circle cx="840" cy="289" r="12" fill="#37D3B4"/>
+      <circle cx="840" cy="367" r="12" fill="#58B4FF"/>
+      <circle cx="840" cy="445" r="12" fill="#78DCC8"/>
+      <circle cx="840" cy="523" r="12" fill="#F3A84E"/>
+      <circle cx="1014" cy="353" r="11" fill="#F3A84E"/>
+      <rect x="752" y="236" width="176" height="50" rx="16" fill="#102534" stroke="#31556F"/>
+      <circle cx="840" cy="211" r="12" fill="#78DCC8"/>
+      <path d="M840 223V236" stroke="url(#lineGlow)" stroke-width="3" stroke-linecap="round"/>
+      <text x="787" y="267" fill="#E8F1F7" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="21" font-weight="600">Seeded</text>
+      <text x="786" y="345" fill="#E8F1F7" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="21" font-weight="600">Scoping</text>
+      <text x="769" y="423" fill="#E8F1F7" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="21" font-weight="600">Implementing</text>
+      <text x="780" y="501" fill="#E8F1F7" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="21" font-weight="600">Validating</text>
+      <text x="782" y="579" fill="#E8F1F7" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="21" font-weight="600">Closeout</text>
+      <text x="1042" y="360" fill="#F7E3CF" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="20" font-weight="600">Blocked</text>
+    </g>
+
+    <g opacity="0.9">
+      <text x="724" y="602" fill="#93A8BA" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="14">authoritative: workflow/manifest.yaml</text>
+      <text x="985" y="602" fill="#93A8BA" font-family="'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace" font-size="14">slices stay bounded</text>
+    </g>
+  </g>
+</svg>

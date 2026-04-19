@@ -1,12 +1,27 @@
 # RefactorFlow
 
+[![CI](https://github.com/oronculzac/refactorflow/actions/workflows/ci.yml/badge.svg)](https://github.com/oronculzac/refactorflow/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-0f766e.svg)](LICENSE)
+
 RefactorFlow is a small, repo-agnostic workflow kit for AI-assisted, bounded
 refactors.
 
-It is designed for maintainers who want coding agents such as OpenAI Codex to
+It gives coding agents such as OpenAI Codex a YAML-first state machine, explicit
+writable scope, validation checkpoints, and lightweight handoff docs so they can
 make progress without widening scope, skipping validation, or hiding decisions in
-chat history. The kit keeps YAML authoritative, uses one obvious CLI entrypoint,
-and generates lightweight Markdown sidecars for human handoff.
+chat history.
+
+## Best Fit
+
+- You want AI-assisted refactors to stay narrow, reviewable, and auditable.
+- You want one obvious command surface instead of scattered prompts and notes.
+- You want workflow state to live in versioned files instead of chat memory.
+
+## Not For
+
+- Large multi-stream planning or project management.
+- Teams looking for a full CI/CD orchestration framework.
+- Repositories where broad autonomous edits are preferred over bounded slices.
 
 ## Why RefactorFlow
 
@@ -53,6 +68,14 @@ flowchart LR
 ./scripts/workflow status --json
 ```
 
+Install into a target repo:
+
+```text
+./scripts/install-workflow-kit --target /path/to/target/repo --repo-name my-repo
+cd /path/to/target/repo
+./scripts/workflow bootstrap --json
+```
+
 Read next:
 
 1. `workflow/manifest.yaml`
@@ -60,7 +83,7 @@ Read next:
 3. `workflow/policy/*.yaml`
 4. `WORKFLOW.md`
 
-## Install Into Another Repo
+## Installer Options
 
 ```text
 ./scripts/install-workflow-kit --target /path/to/target/repo
@@ -101,6 +124,7 @@ See `AI_POLICY.md` for the repository policy.
 - `workflow/`: authoritative workflow state, policies, prompts, and templates
 - `scripts/workflow`: JSON-first workflow CLI
 - `scripts/install-workflow-kit`: installer for other repositories
+- `CHANGELOG.md`: release-facing summary of notable changes
 
 ## Design Rules
 
