@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Run local CLI checks
+        run: npm run ci
+
+      - name: Verify installer in a clean target repo
+        run: |
+          target_root="$(mktemp -d)"
+          target_repo="$target_root/sample-target"
+          mkdir -p "$target_repo"
+          git init -b main "$target_repo"
+          ./scripts/install-workflow-kit --target "$target_repo" --repo-name sample-target >/dev/null
+          (
+            cd "$target_repo"
+            ./scripts/workflow bootstrap --json >/dev/null
+            ./scripts/workflow status --json >/dev/null
+            ./scripts/workflow refresh --json >/dev/null
+          )

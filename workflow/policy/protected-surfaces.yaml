@@ -1,0 +1,27 @@
+version: 1
+scope: protected-surfaces
+surfaces:
+  - name: workflow/state/active-session.yaml
+    protection: read-write-only-by-workflow
+    rationale: Carries the current machine state and active slice metadata.
+  - name: workflow/state/decision-log.ndjson
+    protection: append-only
+    rationale: Preserves an auditable record of decisions.
+  - name: workflow/policy/protected-surfaces.yaml
+    protection: self-protect
+    rationale: The protection rules themselves should not drift casually.
+  - name: workflow/policy/validation-matrix.yaml
+    protection: change-with-review
+    rationale: Validation gates must remain stable and explicit.
+  - name: workflow/policy/risk-map.yaml
+    protection: change-with-review
+    rationale: Risk classification should only change with intent.
+  - name: workflow/policy/runtime-hubs.yaml
+    protection: change-with-review
+    rationale: Runtime boundary rules must stay aligned with the kit model.
+
+rules:
+  - Never modify a protected surface without an explicit reason and a recorded decision.
+  - Prefer append-only records over in-place edits when preserving history matters.
+  - If a change affects a protected surface, pause and re-scope before proceeding.
+

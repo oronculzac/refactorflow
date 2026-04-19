@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a defect in the workflow kit, scripts, or generated workflow artifacts.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Please keep the report specific and bounded so it is actionable for a small OSS maintainer workflow.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the problem.
+      placeholder: bootstrap emits invalid JSON for a fresh install
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Installer
+        - Workflow script or CLI
+        - Manifest or policy
+        - Prompt templates
+        - Generated state or docs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Include the command, inputs, and the smallest reliable sequence to reproduce.
+      placeholder: |
+        1. Run `scripts/workflow bootstrap --json`
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: What does this block, break, or risk in a bounded refactor workflow?
+      placeholder: Blocks first-run setup for a target repo and prevents bootstrap from completing.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include relevant OS, shell, runtime, or target-repo context.
+      placeholder: Ubuntu 24.04, bash, Node 22, running inside a clean target repo
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Logs, screenshots, or links if they add signal.

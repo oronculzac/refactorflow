@@ -1,0 +1,37 @@
+version: 1
+session:
+  status: seeded
+  current_state: seeded
+  previous_state: null
+  active_lane: core-import-cleanup
+  hypothesis: null
+  writable_scope: []
+  protected_surfaces_consulted: false
+  validation_plan: []
+  validation_result: null
+  closeout_ready: false
+  blocked_reason: null
+  external_blockers: []
+  started_at: null
+  updated_at: null
+validation_log: []
+command_log: []
+history: []
+candidate_log: []
+next_step: null
+
+llm_bootstrap:
+  reading_order:
+    - workflow/manifest.yaml
+    - workflow/state/active-session.yaml
+    - workflow/policy/protected-surfaces.yaml
+    - workflow/policy/validation-matrix.yaml
+    - workflow/policy/risk-map.yaml
+    - workflow/policy/runtime-hubs.yaml
+    - workflow/lanes/<lane-file>.yaml
+  next_action: run scripts/workflow bootstrap --json
+
+generated:
+  current_slice: workflow/state/generated/CURRENT_SLICE.md
+  next_session_prompt: workflow/state/generated/NEXT_SESSION_PROMPT.md
+  git_preflight: workflow/state/generated/GIT_PREFLIGHT.md

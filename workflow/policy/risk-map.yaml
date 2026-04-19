@@ -1,0 +1,28 @@
+version: 1
+risks:
+  - id: scope-drift
+    severity: high
+    description: The slice expands beyond the initial writable boundary.
+    mitigation: Re-state the writable scope before each edit batch.
+  - id: state-staleness
+    severity: medium
+    description: Session state falls out of sync with the actual work.
+    mitigation: Update active-session.yaml at each transition.
+  - id: hidden-dependency
+    severity: high
+    description: A small change pulls in an unrelated runtime or policy dependency.
+    mitigation: Stop and classify the dependency before editing.
+  - id: validation-gap
+    severity: medium
+    description: The slice closes without a relevant check.
+    mitigation: Use validation-matrix.yaml as the closeout gate.
+  - id: undocumented-exception
+    severity: medium
+    description: A one-off exception is applied but never recorded.
+    mitigation: Append a decision log entry before completing the slice.
+
+decision_rules:
+  - Treat high-severity risks as blockers until explicitly addressed.
+  - Record medium-severity risks if they influenced the slice design.
+  - Keep low-severity risks visible but do not overfit the workflow to them.
+

@@ -1,0 +1,19 @@
+{
+  "name": "refactorflow",
+  "version": "0.1.0",
+  "description": "AI-assisted bounded refactor workflow kit for small, reviewable repository changes.",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "refactorflow": "./scripts/workflow",
+    "install-refactorflow": "./scripts/install-workflow-kit"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "check:node": "node --check scripts/node/workflow-cli.js && node --check scripts/node/install-workflow-kit.js",
+    "smoke": "./scripts/workflow help --json >/dev/null && ./scripts/workflow bootstrap --json >/dev/null && ./scripts/workflow status --json >/dev/null && ./scripts/workflow refresh --json >/dev/null",
+    "ci": "npm run check:node && npm run smoke"
+  }
+}

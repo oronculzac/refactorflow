@@ -1,0 +1,35 @@
+version: 1
+lane:
+  id: core-import-cleanup
+  name: Core Import Cleanup
+  purpose: Remove accidental import coupling while preserving runtime behavior.
+  writable_scope:
+    - lane-owned implementation files
+    - lane-owned documentation
+  out_of_scope:
+    - protected surfaces
+    - auth behavior
+    - policy behavior
+    - sandbox behavior
+    - trust behavior
+    - MCP behavior
+
+hypothesis: The import graph can be simplified without changing runtime behavior.
+
+steps:
+  - name: map-current-state
+    intent: Capture the existing import and dependency shape.
+  - name: isolate-change
+    intent: Narrow the smallest safe edit set.
+  - name: implement-slice
+    intent: Make one intentional change at a time.
+  - name: validate-slice
+    intent: Run the lane-relevant checks.
+  - name: record-closeout
+    intent: Capture the outcome and any open follow-ups.
+
+discard_criteria:
+  - imports become more coupled
+  - lane spills into protected surfaces
+  - validation reveals a new non-local dependency
+

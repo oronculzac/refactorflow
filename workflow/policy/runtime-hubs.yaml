@@ -1,0 +1,25 @@
+version: 1
+runtime_hubs:
+  - name: core-runtime-hub
+    location_hint: packages/core/src/tools/tools.ts
+    role: Central export surface for runtime-owned tools.
+    rules:
+      - Inspect the hub map before extracting helpers.
+      - Generate the current import map before moving code.
+      - Define discard criteria before making changes.
+      - Run fast build and circular checks before broad validation.
+    stop_conditions:
+      - circular imports increase
+      - new dependencies flow through config.ts or index.ts
+      - the slice expands into auth, policy, sandbox, trust, or MCP behavior
+  - name: boundary-adapter-hub
+    location_hint: repo-specific adapter layer
+    role: Keeps external integrations isolated from core logic.
+    rules:
+      - Move outward-facing wiring here before considering removal.
+      - Keep adapter changes small and reversible.
+
+hub_handling:
+  default: inspect_then_extract
+  if_uncertain: pause_and_record
+

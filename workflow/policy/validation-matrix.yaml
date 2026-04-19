@@ -1,0 +1,36 @@
+version: 1
+matrix:
+  - name: scope-check
+    when: every-slice
+    intent: Confirm the proposed slice stays inside the declared writable scope.
+    evidence:
+      - touched file list
+      - lane selection
+      - session state
+  - name: policy-check
+    when: every-slice
+    intent: Confirm protected surfaces and risk constraints were consulted.
+    evidence:
+      - protected-surfaces.yaml
+      - risk-map.yaml
+  - name: state-check
+    when: before-closeout
+    intent: Confirm the active session file matches the final slice outcome, including whether skipped validations were non-blocking or truly blocking.
+    evidence:
+      - active-session.yaml
+      - decision-log.ndjson
+  - name: runtime-hub-check
+    when: runtime-hub-change
+    intent: Confirm the runtime hub treatment respects hub-specific constraints.
+    evidence:
+      - runtime-hubs.yaml
+      - lane file
+
+required_evidence:
+  - current_state
+  - writable_scope
+  - selected_lane
+  - validation_result
+  - skip_impact_when_present
+  - next_candidate_status_when_present
+  - closeout_note

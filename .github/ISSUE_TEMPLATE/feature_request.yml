@@ -1,0 +1,50 @@
+name: Feature request
+description: Propose an improvement that fits the workflow kit's bounded-refactor goals.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please keep requests tightly scoped, repo-agnostic where practical, and grounded in a clear workflow problem.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What workflow pain or limitation are you trying to solve?
+      placeholder: The kit does not provide a clear handoff step after a bounded refactor slice is validated.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the smallest useful improvement.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope boundaries
+      description: What should be explicitly in scope and out of scope?
+      placeholder: |
+        In scope: add one closeout prompt template field.
+        Out of scope: broader workflow redesign or multi-lane orchestration.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds, prior ideas, or reasons not to pursue other approaches.
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: Describe the target repo or maintainer workflow this would improve.
+    validations:
+      required: true
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Links, examples, or prior art if relevant.

@@ -1,0 +1,100 @@
+name: refactorflow
+summary: AI-assisted bounded refactor workflow kit with a single JSON-first command surface.
+workflow_name: refactorflow
+integration_branch: example/refactor/main
+baseline_branch: example/baseline-upstream
+active_session_file: workflow/state/active-session.yaml
+decision_log_file: workflow/state/decision-log.ndjson
+generated_outputs:
+  - workflow/state/generated/CURRENT_SLICE.md
+  - workflow/state/generated/NEXT_SESSION_PROMPT.md
+  - workflow/state/generated/GIT_PREFLIGHT.md
+commands:
+  help:
+    description: Show command help and manifest metadata.
+  bootstrap:
+    description: Load manifest, session, and policy state in one JSON payload.
+  status:
+    description: Inspect current workflow state and the next recommended action.
+  begin-slice:
+    description: Start one small slice for one or more scopes.
+  validate:
+    description: Record one validation kind for the current slice.
+  record-pass:
+    description: Record a successful command outcome.
+  record-skip:
+    description: Record a skipped command outcome; add --blocking for a hard workflow stop.
+  record-candidate:
+    description: Record the next candidate as open, closed, stale, or discarded.
+  suggest-next:
+    description: Compute the next recommended workflow action.
+  refresh:
+    description: Regenerate human-readable docs from structured state.
+  closeout:
+    description: Close the current slice and append a decision log entry.
+  precommit:
+    description: Run a state-focused precommit checklist.
+validation_kinds:
+  - focused_test
+  - touched_scope_build
+  - root_build
+  - smoke
+  - policy
+  - trust
+  - custom
+kit:
+  name: refactorflow
+  version: 0.1.0
+  purpose: Portable workflow scaffold for small, reviewable refactor slices.
+  audience:
+    - ai-agent
+    - human reviewer
+    - workflow maintainer
+  source_of_truth:
+    primary: workflow/
+    secondary:
+      - README.md
+      - WORKFLOW.md
+
+state_model:
+  states:
+    - seeded
+    - bootstrapping
+    - scoping
+    - implementing
+    - validating
+    - closeout
+    - blocked
+  transitions:
+    seeded: [bootstrapping]
+    bootstrapping: [scoping, blocked]
+    scoping: [implementing, blocked]
+    implementing: [validating, blocked]
+    validating: [closeout, implementing, blocked]
+    closeout: [seeded, blocked]
+    blocked: [bootstrapping, scoping, implementing, validating, closeout]
+
+bootstrap_order:
+  - workflow/manifest.yaml
+  - workflow/state/active-session.yaml
+  - workflow/policy/protected-surfaces.yaml
+  - workflow/policy/validation-matrix.yaml
+  - workflow/policy/risk-map.yaml
+  - workflow/policy/runtime-hubs.yaml
+  - workflow/lanes/core-import-cleanup.yaml
+
+authoritative_artifacts:
+  - workflow/state/active-session.yaml
+  - workflow/state/decision-log.ndjson
+  - workflow/policy/protected-surfaces.yaml
+  - workflow/policy/validation-matrix.yaml
+  - workflow/policy/risk-map.yaml
+  - workflow/policy/runtime-hubs.yaml
+
+output_contract:
+  expected_from_llm:
+    - identify current state
+    - identify allowed lane
+    - identify protected surfaces
+    - select validation checks
+    - record decisions before closeout
