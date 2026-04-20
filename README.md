@@ -41,6 +41,12 @@ flowchart LR
   implementing --> blocked
   validating --> blocked
   closeout --> seeded
+  closeout --> blocked
+  blocked --> bootstrapping
+  blocked --> scoping
+  blocked --> implementing
+  blocked --> validating
+  blocked --> closeout
 ```
 
 ## What You Get
