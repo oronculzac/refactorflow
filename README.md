@@ -35,19 +35,11 @@ chat history.
 
 ```mermaid
 flowchart LR
-  seeded --> bootstrapping --> scoping --> implementing --> validating --> closeout
-  bootstrapping --> blocked
-  scoping --> blocked
-  implementing --> blocked
-  validating --> blocked
-  closeout --> seeded
-  closeout --> blocked
-  blocked --> bootstrapping
-  blocked --> scoping
-  blocked --> implementing
-  blocked --> validating
-  blocked --> closeout
+  seeded --> bootstrapping --> scoping --> implementing --> validating --> closeout --> seeded
 ```
+
+Any active state can move to `blocked` when a hard stop is recorded. After a
+decision, the workflow resumes in the appropriate state.
 
 ## What You Get
 
