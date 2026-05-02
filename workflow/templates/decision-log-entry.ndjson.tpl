@@ -1,2 +1,1 @@
-{"ts":"{{timestamp}}","actor":"{{actor}}","state":"{{state}}","decision":"{{decision}}","detail":"{{detail}}","impact":"{{impact}}"}
-
+{"event":"{{event}}","at":"{{timestamp}}","slice_id":"{{slice_id}}","lane":"{{lane}}","detail":"{{detail}}"}

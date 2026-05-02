@@ -1,0 +1,26 @@
+version: 1
+pack: gem-cli
+scope: protected-surfaces
+surfaces:
+  - name: program.md
+    protection: read-only
+    rationale: Program brief is a source-of-truth planning artifact.
+  - name: results.tsv
+    protection: append-or-record-only
+    rationale: Evaluation results must not be casually rewritten.
+  - name: baseline/**
+    protection: read-only-prefix
+    rationale: Frozen upstream baseline must remain stable during refactor slices.
+  - name: harness/**
+    protection: read-only-prefix
+    rationale: Harness configuration is authoritative for bounded validation.
+  - name: scripts/autoresearch/**
+    protection: read-only-prefix
+    rationale: Autoresearch tooling is protected process infrastructure.
+  - name: docs/refactor/**
+    protection: read-only-prefix
+    rationale: Refactor reference docs should be inspected, not rewritten, during normal slices.
+rules:
+  - Record an explicit protected-surface exception before editing any protected surface.
+  - Prefer sidecar artifacts or handoff notes over protected-surface rewrites.
+  - If policy docs and protected-surface rules disagree, protected-surface rules win.

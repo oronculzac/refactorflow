@@ -10,5 +10,21 @@ matrix:
     evidence: []
   - name: state-check
     when: before-closeout
-    intent: Confirm the active session file matches the final slice outcome, including whether skipped validations were non-blocking or truly blocking.
-    evidence: []
+    intent: Confirm the active session file matches the final slice outcome, including slice_id, hypothesis_check, hypothesis_outcome, protected-surface exceptions, and whether skipped validations were non-blocking or truly blocking.
+    evidence:
+      - active-session.yaml
+      - decision-log.ndjson
+      - hypothesis outcome
+      - protected-surface exceptions when present
+required_evidence:
+  - slice_id
+  - current_state
+  - writable_scope
+  - selected_lane
+  - hypothesis_check
+  - validation_result
+  - closeout_outcome_when_present
+  - skip_impact_when_present
+  - protected_surface_exception_when_present
+  - next_candidate_status_when_present
+  - closeout_note

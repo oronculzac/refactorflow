@@ -4,9 +4,13 @@ session:
   current_state: seeded
   previous_state: null
   active_lane: core-import-cleanup
+  slice_id: null
   hypothesis: null
+  hypothesis_check: null
+  hypothesis_outcome: null
   writable_scope: []
   protected_surfaces_consulted: false
+  protected_surface_exceptions: []
   validation_plan: []
   validation_result: null
   closeout_ready: false

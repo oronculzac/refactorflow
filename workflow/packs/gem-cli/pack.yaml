@@ -1,0 +1,27 @@
+pack:
+  id: gem-cli
+  name: Gem-Cli RefactorFlow Pack
+  version: 1
+  status: template-only
+  target_repo: gem-cli
+  summary: Gem-Cli-specific policy pack for bounded RefactorFlow slices.
+  source_inputs:
+    - AGENTS.md
+    - harness/run-config.json
+    - docs/process/SESSION_BOOTSTRAP_PROMPT.md
+    - docs/process/PLAN_VS_REALITY.md
+    - docs/process/RUNTIME_SLICE_TEMPLATE.md
+    - docs/refactor/runtime-hub-map.md
+  files:
+    protected_surfaces: workflow/packs/gem-cli/protected-surfaces.yaml
+    validation_matrix: workflow/packs/gem-cli/validation-matrix.yaml
+    runtime_hub_rules: workflow/packs/gem-cli/runtime-hub-rules.yaml
+    context_hygiene: workflow/packs/gem-cli/context-hygiene.yaml
+  installer_support:
+    copied_by_current_installer: true
+    auto_applies_policy: true
+    activation_option: --pack gem-cli
+  usage:
+    - Install RefactorFlow with --pack gem-cli in gem-cli or a throwaway target repo.
+    - Keep protected surfaces read-only unless an explicit exception is recorded.
+    - Run validation commands selected from the matrix before closeout.

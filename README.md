@@ -49,6 +49,8 @@ decision, the workflow resumes in the appropriate state.
 - Session state and decision logging for AI-assisted execution.
 - Prompt templates for bootstrap, closeout, and runtime-hub guidance.
 - A single `scripts/workflow` command that emits JSON-first workflow state.
+- Strict precommit enforcement, explicit protected-surface exceptions, and a
+  lock file for state mutation safety.
 - An installer that copies the kit into another repository and rewrites the main
   branch, lane, and runtime-hub placeholders.
 
@@ -64,6 +66,8 @@ decision, the workflow resumes in the appropriate state.
 ./scripts/workflow help --json
 ./scripts/workflow bootstrap --json
 ./scripts/workflow status --json
+./scripts/workflow begin-slice --scope src/ --hypothesis "narrow change" --json
+./scripts/workflow precommit --strict --json
 ```
 
 Install into a target repo:
@@ -95,6 +99,7 @@ Useful options:
 - `--lane-name <name>`
 - `--runtime-hub <path>`
 - `--repo-name <name>`
+- `--pack <id>`
 - `--force`
 - `--json`
 
@@ -102,6 +107,11 @@ The installer copies the workflow tree and command surface into the target repo,
 rewrites the main branch and lane placeholders, refreshes the seeded docs in the
 destination, and stores this repository README as `README.refactorflow.md` so it
 does not overwrite the target repo's own top-level README.
+
+Target-specific packs under `workflow/packs/` can be activated during install.
+For example, `--pack gem-cli` merges the `gem-cli` protected surfaces,
+validation matrix, runtime-hub rules, and context hygiene settings into the
+target workflow policy.
 
 ## AI Assistance
 
@@ -123,6 +133,20 @@ See `AI_POLICY.md` for the repository policy.
 - `scripts/workflow`: JSON-first workflow CLI
 - `scripts/install-workflow-kit`: installer for other repositories
 - `CHANGELOG.md`: release-facing summary of notable changes
+
+## Hard Enforcement
+
+- `scripts/workflow precommit --strict --json` exits non-zero when the staged
+  slice drifts outside the declared scope, generated docs are stale, or other
+  required checks are missing.
+- Touching a protected surface without a recorded exception blocks the session
+  automatically during `precommit`.
+- Record protected-surface exceptions explicitly with
+  `scripts/workflow record-protected-surface --surface <path> --reason <text>`.
+- `scripts/workflow closeout` now requires
+  `--outcome <supported|refuted|inconclusive>`.
+- Mutating commands use `workflow/state/.session.lock`; clear a stale lock with
+  `scripts/workflow unlock --force`.
 
 ## Design Rules
 

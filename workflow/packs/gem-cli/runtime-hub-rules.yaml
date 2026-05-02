@@ -1,0 +1,29 @@
+version: 1
+pack: gem-cli
+scope: runtime-hub-rules
+runtime_hub:
+  primary_file: packages/core/src/tools/tools.ts
+  map_doc: docs/refactor/runtime-hub-map.md
+  map_command: node scripts/autoresearch/eval/map-tools-hub.js
+required_order:
+  - Inspect docs/refactor/runtime-hub-map.md.
+  - Generate the current tools hub import map.
+  - Define discard criteria before editing.
+  - Run fast build and circular checks before broader validation.
+fast_validation:
+  - npm run build --workspace @google/gemini-cli-core
+  - npm run autoresearch:eval:circular
+discard_criteria:
+  - Circular import count increases above baseline.
+  - Config or index dependencies must widen to make the slice compile.
+  - The slice expands into auth behavior.
+  - The slice expands into policy behavior.
+  - The slice expands into sandbox behavior.
+  - The slice expands into trust behavior.
+  - The slice expands into MCP behavior.
+  - The slice requires broad runtime movement before the targeted seam is understood.
+rules:
+  - Do not extract helpers or classes speculatively from tools.ts.
+  - Prefer mapping and audit slices before runtime-owned export movement.
+  - Record exact targeted exports and expected import graph changes before editing.
+  - Stop immediately when fast validation shows circular increase or boundary widening.

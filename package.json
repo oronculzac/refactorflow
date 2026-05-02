@@ -8,12 +8,23 @@
     "refactorflow": "./scripts/workflow",
     "install-refactorflow": "./scripts/install-workflow-kit"
   },
+  "files": [
+    "AI_POLICY.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "WORKFLOW.md",
+    "scripts/",
+    "workflow/"
+  ],
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "check:node": "node --check scripts/node/workflow-cli.js && node --check scripts/node/install-workflow-kit.js",
+    "test": "node --test",
     "smoke": "./scripts/workflow help --json >/dev/null && ./scripts/workflow bootstrap --json >/dev/null && ./scripts/workflow status --json >/dev/null && ./scripts/workflow refresh --json >/dev/null",
-    "ci": "npm run check:node && npm run smoke"
+    "ci": "npm run check:node && npm run test && npm run smoke"
   }
 }

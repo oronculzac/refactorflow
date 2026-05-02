@@ -16,8 +16,10 @@ Active lane: `{{active_lane}}`
 
 Bootstrap rules:
 - State the one small hypothesis you will test.
+- If possible, state the concrete check that will decide whether the hypothesis was supported, refuted, or inconclusive.
 - Declare the writable scope before editing anything.
 - Refuse to touch protected surfaces unless an explicit exception exists.
+- If a protected surface must change, record it explicitly with `scripts/workflow record-protected-surface --surface <path> --reason <text>`.
 - Select validation checks from `workflow/policy/validation-matrix.yaml`.
 - Record decisions in `workflow/state/decision-log.ndjson`.
 - If the last recorded candidate is stale, closed, or discarded, rerank fresh
@@ -27,5 +29,6 @@ Output format:
 - current state
 - lane
 - writable scope
+- hypothesis check
 - selected checks
 - next action

@@ -1,0 +1,30 @@
+version: 1
+pack: gem-cli
+scope: context-hygiene
+generated_doc_budgets:
+  workflow/state/generated/CURRENT_SLICE.md:
+    max_lines: 80
+  workflow/state/generated/NEXT_SESSION_PROMPT.md:
+    max_lines: 80
+  workflow/state/generated/GIT_PREFLIGHT.md:
+    max_lines: 80
+active_prompt:
+  include:
+    - current slice hypothesis
+    - current writable scope
+    - next required command or decision
+    - latest validation state
+  exclude:
+    - historical slice detail
+    - stale generated snapshots
+    - large runtime hub notes
+    - full copied reference docs
+archive_policy:
+  historical_slice_detail: ledger-or-archive
+  generated_advisory_artifacts: sidecar-or-separate-slice
+  active_prompt_goal: only current slice and next step
+rules:
+  - Keep generated docs compact and regenerate them from structured state.
+  - Keep active prompts focused on the current slice and next step.
+  - Move historical slice detail into a ledger or archive before it bloats the active prompt.
+  - Summarize protected reference docs instead of copying large content into workflow state.

@@ -99,10 +99,14 @@ function renderMarkdownCloseout(payload) {
   lines.push(`- Status: ${payload.session.session.status}`);
   lines.push(`- Current state: ${payload.session.session.current_state}`);
   lines.push(`- Updated at: ${payload.session.session.updated_at || 'n/a'}`);
+  lines.push(`- Slice ID: ${payload.session.session.slice_id || 'n/a'}`);
   lines.push(
     `- Scope: ${(payload.session.session.writable_scope || []).join(', ') || 'n/a'}`,
   );
   lines.push(`- Hypothesis: ${payload.session.session.hypothesis || 'n/a'}`);
+  lines.push(
+    `- Hypothesis outcome: ${payload.session.session.hypothesis_outcome || 'n/a'}`,
+  );
   if (payload.summary) {
     lines.push('');
     lines.push('## Summary');
@@ -153,6 +157,7 @@ function renderCurrentSliceDoc(payload) {
   lines.push(`- refreshed at: \`${payload.refreshedAt}\``);
   lines.push(`- workflow: \`${payload.manifest.name}\``);
   lines.push(`- active lane: \`${payload.session.session.active_lane || 'unassigned'}\``);
+  lines.push(`- slice id: \`${payload.session.session.slice_id || 'not recorded'}\``);
   lines.push(
     `- current state: \`${payload.session.session.current_state || 'unknown'}\``,
   );
@@ -161,6 +166,12 @@ function renderCurrentSliceDoc(payload) {
   lines.push('');
   lines.push(
     `- hypothesis: ${payload.session.session.hypothesis || 'not yet recorded'}`,
+  );
+  lines.push(
+    `- hypothesis check: ${payload.session.session.hypothesis_check || 'not yet recorded'}`,
+  );
+  lines.push(
+    `- hypothesis outcome: ${payload.session.session.hypothesis_outcome || 'not yet recorded'}`,
   );
   lines.push(
     `- writable scope: ${(payload.session.session.writable_scope || []).join(', ') || 'not yet recorded'}`,
@@ -199,8 +210,15 @@ function renderNextSessionPromptDoc(payload) {
   lines.push('');
   lines.push(`Current state: \`${payload.session.session.current_state}\``);
   lines.push(`Active lane: \`${payload.session.session.active_lane || 'unassigned'}\``);
+  lines.push(`Active slice ID: \`${payload.session.session.slice_id || 'not yet recorded'}\``);
   lines.push(
     `Active hypothesis: ${payload.session.session.hypothesis || 'not yet recorded'}`,
+  );
+  lines.push(
+    `Hypothesis check: ${payload.session.session.hypothesis_check || 'not yet recorded'}`,
+  );
+  lines.push(
+    `Hypothesis outcome: ${payload.session.session.hypothesis_outcome || 'not yet recorded'}`,
   );
   lines.push(
     `Suggested next command: \`${payload.suggestion.command}\``,
@@ -231,6 +249,7 @@ function renderGitPreflightDoc(payload) {
   lines.push('- keep one writable scope at a time');
   lines.push('- stage the active slice first; let workflow state and generated docs ride along as sidecars');
   lines.push('- keep the structured workflow state authoritative');
+  lines.push('- use `scripts/workflow precommit --strict --json` before commit when you want hard enforcement');
   lines.push('- refresh generated docs after changing workflow state');
   lines.push('- if refresh or formatters rewrite generated docs, restage `workflow/state/generated/*` before retrying commit');
   lines.push(

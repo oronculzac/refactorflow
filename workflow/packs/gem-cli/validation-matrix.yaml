@@ -1,0 +1,75 @@
+version: 1
+pack: gem-cli
+source: harness/run-config.json
+current_package: "@google/gemini-cli-core"
+default_writable_scope: packages/core/**
+commands:
+  root_build:
+    kind: root_build
+    required: true
+    command: npm run build
+    rationale: Root build is required by the harness acceptance contract.
+  core_build:
+    kind: touched_scope_build
+    required: true
+    command: npm run build --workspace @google/gemini-cli-core
+    rationale: Core package build validates the first structural lane.
+  core_targeted_tests:
+    kind: focused_test
+    required: true
+    command: npm --workspace @google/gemini-cli-core exec -- vitest run src/policy/policy-engine.test.ts src/tools/read-file.test.ts src/services/shellExecutionService.test.ts --coverage.enabled=false
+    rationale: Targeted core tests cover policy, tool IO, and shell execution seams.
+  smoke_core:
+    kind: smoke
+    required: true
+    command: npm run autoresearch:smoke:core
+    rationale: Core smoke check is part of the kept-slice gate.
+  smoke_tools:
+    kind: smoke
+    required: true
+    command: npm run autoresearch:smoke:tools
+    rationale: Tool smoke check guards shipped tool behavior.
+  security_policy:
+    kind: trust
+    required: true
+    command: npm run autoresearch:security:policy
+    rationale: Policy behavior is a protected refactor boundary.
+  security_trust:
+    kind: trust
+    required: true
+    command: npm run autoresearch:security:trust
+    rationale: Trust behavior is a protected refactor boundary.
+  circular_import_eval:
+    kind: policy
+    required: true
+    command: npm run autoresearch:eval:circular
+    rationale: Refactor slices must not increase circular imports.
+  auth_smoke_oauth:
+    kind: smoke
+    required: false
+    command: npm run autoresearch:smoke:auth:oauth
+    required_when: lane touches auth behavior or explicitly requires auth matrix
+  auth_smoke_apikey:
+    kind: smoke
+    required: false
+    command: npm run autoresearch:smoke:auth:apikey
+    required_when: lane touches auth behavior or explicitly requires auth matrix
+  auth_smoke_vertex:
+    kind: smoke
+    required: false
+    command: npm run autoresearch:smoke:auth:vertex
+    required_when: lane touches auth behavior or explicitly requires auth matrix
+acceptance:
+  require_root_build: true
+  require_target_build: true
+  require_target_tests: true
+  require_smoke_core: true
+  require_smoke_tools: true
+  require_security_policy: true
+  require_security_trust: true
+  require_no_circular_imports: true
+  auth_smoke_default: optional
+notes:
+  - Use touched package validation first when the active lane differs from the harness current package.
+  - Record skipped validation with concrete rationale in the active session or handoff.
+  - Treat draft architecture checks as advisory unless the slice explicitly owns that tooling.

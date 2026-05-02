@@ -9,6 +9,13 @@ generated_outputs:
   - workflow/state/generated/CURRENT_SLICE.md
   - workflow/state/generated/NEXT_SESSION_PROMPT.md
   - workflow/state/generated/GIT_PREFLIGHT.md
+generated_doc_budgets:
+  workflow/state/generated/CURRENT_SLICE.md:
+    max_lines: 80
+  workflow/state/generated/NEXT_SESSION_PROMPT.md:
+    max_lines: 80
+  workflow/state/generated/GIT_PREFLIGHT.md:
+    max_lines: 80
 commands:
   help:
     description: Show command help and manifest metadata.
@@ -19,21 +26,25 @@ commands:
   begin-slice:
     description: Start one small slice for one or more scopes.
   validate:
-    description: Record one validation kind for the current slice.
+    description: Record one validation kind for the current slice; add --run to execute the command.
   record-pass:
     description: Record a successful command outcome.
   record-skip:
     description: Record a skipped command outcome; add --blocking for a hard workflow stop.
   record-candidate:
     description: Record the next candidate as open, closed, stale, or discarded.
+  record-protected-surface:
+    description: Record an explicit protected-surface exception with --surface <path> --reason <text>.
   suggest-next:
     description: Compute the next recommended workflow action.
   refresh:
     description: Regenerate human-readable docs from structured state.
   closeout:
-    description: Close the current slice and append a decision log entry.
+    description: Close the current slice with --outcome <supported|refuted|inconclusive> and append a decision log entry.
   precommit:
-    description: Run a state-focused precommit checklist.
+    description: Run a state-focused precommit checklist; add --strict for non-zero enforcement on checklist failures.
+  unlock:
+    description: Remove a stale session lock; requires --force.
 validation_kinds:
   - focused_test
   - touched_scope_build

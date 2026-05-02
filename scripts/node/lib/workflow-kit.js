@@ -1,6 +1,7 @@
 'use strict';
 
-const { execFileSync } = require('child_process');
+const { randomUUID } = require('crypto');
+const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -8,6 +9,8 @@ const { ensureDir, pathExists, readTextIfExists, statIfExists, writeText } = req
 const {
   MANIFEST_PATH,
   SESSION_PATH,
+  SESSION_LOCK_PATH,
+  PROTECTED_SURFACES_PATH,
   DECISION_LOG_PATH,
   CURRENT_SLICE_PATH,
   NEXT_SESSION_PROMPT_PATH,
@@ -39,7 +42,10 @@ const DEFAULT_MANIFEST = {
     bootstrap: { description: 'Load manifest, session, and policy state in one JSON payload.' },
     status: { description: 'Inspect current workflow state and the next recommended action.' },
     'begin-slice': { description: 'Start one small slice for one or more scopes.' },
-    validate: { description: 'Record one validation kind for the current slice.' },
+    validate: {
+      description:
+        'Record one validation kind for the current slice; add --run to execute the command.',
+    },
     'record-pass': { description: 'Record a successful command outcome.' },
     'record-skip': {
       description:
@@ -49,10 +55,21 @@ const DEFAULT_MANIFEST = {
       description:
         'Record the next candidate as open, closed, stale, or discarded.',
     },
+    'record-protected-surface': {
+      description:
+        'Record an explicit protected-surface exception with --surface <path> --reason <text>.',
+    },
     'suggest-next': { description: 'Compute the next recommended workflow action.' },
     refresh: { description: 'Regenerate human-readable docs from structured state.' },
-    closeout: { description: 'Close the current slice and append a decision log entry.' },
-    precommit: { description: 'Run a state-focused precommit checklist.' },
+    closeout: {
+      description:
+        'Close the current slice with --outcome <supported|refuted|inconclusive> and append a decision log entry.',
+    },
+    precommit: {
+      description:
+        'Run a state-focused precommit checklist; add --strict for non-zero enforcement on checklist failures.',
+    },
+    unlock: { description: 'Remove a stale session lock; requires --force.' },
   },
   validation_kinds: [
     'focused_test',
@@ -68,6 +85,11 @@ const DEFAULT_MANIFEST = {
     'workflow/state/generated/NEXT_SESSION_PROMPT.md',
     'workflow/state/generated/GIT_PREFLIGHT.md',
   ],
+  generated_doc_budgets: {
+    'workflow/state/generated/CURRENT_SLICE.md': { max_lines: 80 },
+    'workflow/state/generated/NEXT_SESSION_PROMPT.md': { max_lines: 80 },
+    'workflow/state/generated/GIT_PREFLIGHT.md': { max_lines: 80 },
+  },
 };
 
 const DEFAULT_SESSION = {
@@ -77,9 +99,13 @@ const DEFAULT_SESSION = {
     current_state: 'seeded',
     previous_state: null,
     active_lane: 'core-import-cleanup',
+    slice_id: null,
     hypothesis: null,
+    hypothesis_check: null,
+    hypothesis_outcome: null,
     writable_scope: [],
     protected_surfaces_consulted: false,
+    protected_surface_exceptions: [],
     validation_plan: [],
     validation_result: null,
     closeout_ready: false,
@@ -112,6 +138,11 @@ const DEFAULT_SESSION = {
   },
 };
 
+const DEFAULT_PROTECTED_SURFACES = {
+  surfaces: [],
+  rules: [],
+};
+
 const GIT_CHANGED_PATHS_ARGS = ['status', '--porcelain=1', '--untracked-files=all'];
 const GIT_STAGED_PATHS_ARGS = [
   'diff',
@@ -119,6 +150,8 @@ const GIT_STAGED_PATHS_ARGS = [
   '--name-only',
   '--diff-filter=ACDMRTUXB',
 ];
+const OUTPUT_SUMMARY_MAX_CHARS = 2000;
+const OUTPUT_SUMMARY_MAX_LINES = 40;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -167,6 +200,10 @@ function loadManifest() {
   return loadYamlFile(MANIFEST_PATH, DEFAULT_MANIFEST);
 }
 
+function loadProtectedSurfaces() {
+  return loadYamlFile(PROTECTED_SURFACES_PATH, DEFAULT_PROTECTED_SURFACES);
+}
+
 function loadSession() {
   const session = loadYamlFile(SESSION_PATH, DEFAULT_SESSION);
   if (!Array.isArray(session.validation_log)) {
@@ -187,6 +224,9 @@ function loadSession() {
   if (!Array.isArray(session.session.external_blockers)) {
     session.session.external_blockers = [];
   }
+  if (!Array.isArray(session.session.protected_surface_exceptions)) {
+    session.session.protected_surface_exceptions = [];
+  }
   return session;
 }
 
@@ -202,6 +242,85 @@ function appendDecisionLog(entry) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function createSliceId() {
+  return `slice-${now().replace(/[-:.TZ]/g, '').slice(0, 14)}-${randomUUID().slice(0, 8)}`;
+}
+
+function readSessionLock() {
+  const raw = readTextIfExists(SESSION_LOCK_PATH);
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {
+      raw,
+    };
+  }
+}
+
+function acquireSessionLock(commandName) {
+  const lock = {
+    lock_id: randomUUID(),
+    command: commandName,
+    pid: process.pid,
+    at: now(),
+  };
+
+  ensureDir(path.dirname(SESSION_LOCK_PATH));
+  let fd;
+  try {
+    fd = fs.openSync(SESSION_LOCK_PATH, 'wx');
+  } catch (error) {
+    if (error && error.code === 'EEXIST') {
+      const existing = readSessionLock();
+      const detail = existing && existing.command
+        ? `held by command "${existing.command}" at ${existing.at || 'unknown time'}`
+        : 'present with unreadable contents';
+      throw new Error(
+        `session lock already exists (${detail}); retry later or run scripts/workflow unlock --force`,
+      );
+    }
+    throw error;
+  }
+
+  try {
+    fs.writeFileSync(fd, `${JSON.stringify(lock, null, 2)}\n`, 'utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  return lock;
+}
+
+function releaseSessionLock(lock) {
+  if (!lock || !pathExists(SESSION_LOCK_PATH)) {
+    return;
+  }
+  const existing = readSessionLock();
+  if (
+    existing &&
+    typeof existing === 'object' &&
+    existing.lock_id &&
+    existing.lock_id !== lock.lock_id
+  ) {
+    return;
+  }
+  fs.rmSync(SESSION_LOCK_PATH, {
+    force: true,
+  });
+}
+
+function withSessionLock(commandName, operation) {
+  const lock = acquireSessionLock(commandName);
+  try {
+    return operation(lock);
+  } finally {
+    releaseSessionLock(lock);
+  }
 }
 
 function readFileMetadata(filePath) {
@@ -224,6 +343,24 @@ function normalizeScopes(scope) {
     return scope.map((entry) => String(entry).trim()).filter(Boolean);
   }
   return [String(scope).trim()].filter(Boolean);
+}
+
+function isTrue(value) {
+  return value === true || value === 'true';
+}
+
+function getProtectedSurfaceExceptions(session) {
+  if (!Array.isArray(session.session.protected_surface_exceptions)) {
+    session.session.protected_surface_exceptions = [];
+  }
+  return session.session.protected_surface_exceptions;
+}
+
+function hasProtectedSurfaceException(session, filePath) {
+  return getProtectedSurfaceExceptions(session).some((entry) => {
+    const pattern = buildPathPattern(entry.surface);
+    return pathMatchesPattern(filePath, pattern);
+  });
 }
 
 function getExternalBlockers(session) {
@@ -250,7 +387,7 @@ function getValidationResultWithExternalBlockers(baseResult, externalBlockers) {
 }
 
 function isBlockingSkip(options) {
-  return options.blocking === true || options.blocking === 'true';
+  return isTrue(options.blocking);
 }
 
 function normalizeCandidateStatus(options) {
@@ -268,12 +405,165 @@ function normalizeCandidateStatus(options) {
   );
 }
 
+function normalizeValidationKind(kind, manifest) {
+  const normalizedKind = String(kind || '').trim();
+  const acceptedKinds = Array.isArray(manifest.validation_kinds)
+    ? manifest.validation_kinds.map((entry) => String(entry))
+    : DEFAULT_MANIFEST.validation_kinds;
+  if (!normalizedKind) {
+    throw new Error('validate requires --kind');
+  }
+  if (!acceptedKinds.includes(normalizedKind)) {
+    throw new Error(
+      `unknown validation kind "${normalizedKind}"; expected one of: ${acceptedKinds.join(', ')}`,
+    );
+  }
+  return normalizedKind;
+}
+
+function normalizeCloseoutOutcome(options) {
+  const outcome = String(options.outcome || '').trim().toLowerCase();
+  if (
+    outcome === 'supported' ||
+    outcome === 'refuted' ||
+    outcome === 'inconclusive'
+  ) {
+    return outcome;
+  }
+  throw new Error(
+    'closeout requires --outcome <supported|refuted|inconclusive>',
+  );
+}
+
+function isPassLikeValidationResult(result) {
+  return result === 'passed' || result === 'passed-with-external-skips';
+}
+
+function parseCommandText(commandText) {
+  const text = String(commandText || '').trim();
+  if (!text) {
+    return [];
+  }
+
+  const args = [];
+  let current = '';
+  let quote = null;
+  let escaping = false;
+  for (const character of text) {
+    if (escaping) {
+      current += character;
+      escaping = false;
+      continue;
+    }
+    if (character === '\\') {
+      escaping = true;
+      continue;
+    }
+    if (quote) {
+      if (character === quote) {
+        quote = null;
+      } else {
+        current += character;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (/\s/.test(character)) {
+      if (current) {
+        args.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += character;
+  }
+  if (escaping) {
+    current += '\\';
+  }
+  if (quote) {
+    throw new Error('validate --run command has an unterminated quote');
+  }
+  if (current) {
+    args.push(current);
+  }
+  return args;
+}
+
+function resolveExecutable(command) {
+  if (command.includes('/') || command.includes('\\')) {
+    return path.resolve(REPO_ROOT, command);
+  }
+  return command;
+}
+
+function summarizeOutput(output) {
+  const text = String(output || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const trimmed = text.trimEnd();
+  const lines = trimmed ? trimmed.split('\n') : [];
+  const truncatedByLines = lines.length > OUTPUT_SUMMARY_MAX_LINES;
+  let summary = lines.slice(0, OUTPUT_SUMMARY_MAX_LINES).join('\n');
+  const truncatedByChars = summary.length > OUTPUT_SUMMARY_MAX_CHARS;
+  if (truncatedByChars) {
+    summary = summary.slice(0, OUTPUT_SUMMARY_MAX_CHARS);
+  }
+  return {
+    text: summary,
+    lines: lines.length,
+    chars: text.length,
+    truncated: truncatedByLines || truncatedByChars,
+  };
+}
+
+function runValidationCommand(commandText) {
+  const argv = parseCommandText(commandText);
+  if (argv.length === 0) {
+    throw new Error('validate --run requires --command <text>');
+  }
+
+  const startedAt = now();
+  const startedAtMs = Date.now();
+  const result = spawnSync(resolveExecutable(argv[0]), argv.slice(1), {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    shell: false,
+    windowsHide: true,
+    maxBuffer: 1024 * 1024,
+  });
+  const durationMs = Date.now() - startedAtMs;
+  const exitCode =
+    typeof result.status === 'number'
+      ? result.status
+      : result.error
+        ? 127
+        : null;
+
+  return {
+    command: commandText,
+    argv,
+    at: startedAt,
+    exit_code: exitCode,
+    signal: result.signal || null,
+    duration_ms: durationMs,
+    stdout: summarizeOutput(result.stdout),
+    stderr: summarizeOutput(
+      result.error && !result.stderr
+        ? result.error.message
+        : result.stderr,
+    ),
+  };
+}
+
 function loadWorkflowState() {
   const manifest = loadManifest();
   const session = loadSession();
+  const protectedSurfaces = loadProtectedSurfaces();
   return {
     manifest,
     session,
+    protectedSurfaces,
     manifestPath: MANIFEST_PATH,
     sessionFile: SESSION_PATH,
   };
@@ -402,6 +692,23 @@ function getChangedFiles() {
   };
 }
 
+function getDirtyFiles() {
+  const dirtyRaw = tryExecGit(GIT_CHANGED_PATHS_ARGS);
+  if (dirtyRaw === null) {
+    return {
+      gitAvailable: false,
+      sourceMode: 'unavailable',
+      paths: [],
+    };
+  }
+
+  return {
+    gitAvailable: true,
+    sourceMode: 'dirty',
+    paths: parseGitStatusPaths(dirtyRaw),
+  };
+}
+
 function isWithinScope(filePath, scopes) {
   return scopes.some((scope) => {
     const normalizedScope = normalizePath(scope);
@@ -421,8 +728,118 @@ function getWorkflowSidecarPaths(manifest) {
       ...generatedOutputs,
       toRepoRelative(SESSION_PATH),
       toRepoRelative(DECISION_LOG_PATH),
+      toRepoRelative(SESSION_LOCK_PATH),
     ].map((entry) => normalizePath(entry)),
   );
+}
+
+function escapeRegExp(text) {
+  return String(text).replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+}
+
+function globToRegExp(pattern) {
+  let source = '^';
+  const text = normalizePath(pattern);
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '*') {
+      if (text[index + 1] === '*') {
+        source += '.*';
+        index += 1;
+      } else {
+        source += '[^/]*';
+      }
+      continue;
+    }
+    source += escapeRegExp(character);
+  }
+  source += '$';
+  return new RegExp(source);
+}
+
+function buildPathPattern(value) {
+  const raw = String(value || '')
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .trim();
+  if (!raw) {
+    return null;
+  }
+  if (raw.endsWith('/**')) {
+    return {
+      raw: normalizePath(raw),
+      mode: 'prefix',
+      prefix: normalizePath(raw.slice(0, -3)),
+    };
+  }
+  if (raw.endsWith('/*')) {
+    return {
+      raw: normalizePath(raw),
+      mode: 'prefix',
+      prefix: normalizePath(raw.slice(0, -2)),
+    };
+  }
+  if (raw.endsWith('/')) {
+    return {
+      raw: normalizePath(raw),
+      mode: 'prefix',
+      prefix: normalizePath(raw),
+    };
+  }
+  if (raw.includes('*')) {
+    return {
+      raw: normalizePath(raw),
+      mode: 'glob',
+      regex: globToRegExp(raw),
+    };
+  }
+  return {
+    raw: normalizePath(raw),
+    mode: 'exact',
+    path: normalizePath(raw),
+  };
+}
+
+function pathMatchesPattern(filePath, pattern) {
+  const normalizedPath = normalizePath(filePath);
+  if (!pattern || !normalizedPath) {
+    return false;
+  }
+  if (pattern.mode === 'exact') {
+    return normalizedPath === pattern.path;
+  }
+  if (pattern.mode === 'prefix') {
+    return (
+      normalizedPath === pattern.prefix ||
+      normalizedPath.startsWith(`${pattern.prefix}/`)
+    );
+  }
+  if (pattern.mode === 'glob') {
+    return pattern.regex.test(normalizedPath);
+  }
+  return false;
+}
+
+function getProtectedSurfacePatterns(protectedSurfaces) {
+  const entries =
+    protectedSurfaces &&
+    Array.isArray(protectedSurfaces.surfaces)
+      ? protectedSurfaces.surfaces
+      : [];
+  return entries
+    .map((entry) => buildPathPattern(entry && entry.name ? entry.name : ''))
+    .filter(Boolean);
+}
+
+function hasMatchingPathPattern(patterns, filePath) {
+  return patterns.some((pattern) => pathMatchesPattern(filePath, pattern));
+}
+
+function getAllowedProtectedSurfacePaths() {
+  return new Set([
+    toRepoRelative(SESSION_PATH),
+    toRepoRelative(DECISION_LOG_PATH),
+  ]);
 }
 
 function getSharedPathPrefix(paths) {
@@ -449,12 +866,23 @@ function getSharedPathPrefix(paths) {
   return prefix.length > 0 ? prefix.join('/') : null;
 }
 
-function inspectChangedFiles(manifest, session) {
+function inspectChangedFiles(manifest, session, protectedSurfaces) {
   const changed = getChangedFiles();
+  return inspectChangedFileSet(manifest, session, protectedSurfaces, changed);
+}
+
+function inspectDirtyFiles(manifest, session, protectedSurfaces, scopes) {
+  const changed = getDirtyFiles();
+  return inspectChangedFileSet(manifest, session, protectedSurfaces, changed, scopes);
+}
+
+function inspectChangedFileSet(manifest, session, protectedSurfaces, changed, scopes) {
   const sidecarPaths = getWorkflowSidecarPaths(manifest);
-  const writableScope = normalizeScopes(session.session.writable_scope).map((entry) =>
-    normalizePath(entry),
-  );
+  const protectedSurfacePatterns = getProtectedSurfacePatterns(protectedSurfaces);
+  const allowedProtectedSurfacePaths = getAllowedProtectedSurfacePaths();
+  const writableScope = normalizeScopes(
+    typeof scopes === 'undefined' ? session.session.writable_scope : scopes,
+  ).map((entry) => normalizePath(entry));
   const buckets = {
     gitAvailable: changed.gitAvailable,
     sourceMode: changed.sourceMode,
@@ -462,11 +890,23 @@ function inspectChangedFiles(manifest, session) {
     primaryFiles: [],
     workflowSidecars: [],
     outOfScopeFiles: [],
+    protectedSurfaceFiles: [],
+    unapprovedProtectedSurfaceFiles: [],
     primaryGroup: null,
     hasSinglePrimaryGroup: true,
   };
 
   for (const filePath of changed.paths) {
+    if (hasMatchingPathPattern(protectedSurfacePatterns, filePath)) {
+      buckets.protectedSurfaceFiles.push(filePath);
+      if (
+        !allowedProtectedSurfacePaths.has(filePath) &&
+        !hasProtectedSurfaceException(session, filePath)
+      ) {
+        buckets.unapprovedProtectedSurfaceFiles.push(filePath);
+      }
+    }
+
     if (sidecarPaths.has(filePath)) {
       buckets.workflowSidecars.push(filePath);
       continue;
@@ -506,6 +946,71 @@ function generatedDocsAreFresh(expectedDocs) {
     nextSessionMatches,
     gitPreflightMatches,
     allMatch: currentSliceMatches && nextSessionMatches && gitPreflightMatches,
+  };
+}
+
+function countLines(text) {
+  const normalized = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (normalized === '') {
+    return 0;
+  }
+  const withoutTrailingNewline = normalized.endsWith('\n')
+    ? normalized.slice(0, -1)
+    : normalized;
+  return withoutTrailingNewline === ''
+    ? 0
+    : withoutTrailingNewline.split('\n').length;
+}
+
+function normalizeMaxLines(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (isObject(value)) {
+    return normalizeMaxLines(value.max_lines);
+  }
+  return null;
+}
+
+function getGeneratedDocEntries(expectedDocs) {
+  return [
+    {
+      key: 'currentSlice',
+      path: normalizePath('workflow/state/generated/CURRENT_SLICE.md'),
+      text: expectedDocs.currentSlice,
+    },
+    {
+      key: 'nextSessionPrompt',
+      path: normalizePath('workflow/state/generated/NEXT_SESSION_PROMPT.md'),
+      text: expectedDocs.nextSessionPrompt,
+    },
+    {
+      key: 'gitPreflight',
+      path: normalizePath('workflow/state/generated/GIT_PREFLIGHT.md'),
+      text: expectedDocs.gitPreflight,
+    },
+  ];
+}
+
+function inspectGeneratedDocLineBudgets(manifest, expectedDocs) {
+  const budgets = isObject(manifest.generated_doc_budgets)
+    ? manifest.generated_doc_budgets
+    : {};
+  const docs = getGeneratedDocEntries(expectedDocs).map((entry) => {
+    const maxLines = normalizeMaxLines(budgets[entry.path]);
+    const lines = countLines(entry.text);
+    return {
+      path: entry.path,
+      lines,
+      max_lines: maxLines,
+      within_budget: maxLines === null || lines <= maxLines,
+    };
+  });
+  const overBudget = docs.filter((entry) => !entry.within_budget);
+  return {
+    docs,
+    over_budget: overBudget,
+    all_within_budget: overBudget.length === 0,
   };
 }
 
@@ -550,85 +1055,163 @@ function statusWorkflow() {
   };
 }
 
+function assertBeginSliceDirtyTreeAllowed(manifest, session, protectedSurfaces, scopes) {
+  const dirtyFiles = inspectDirtyFiles(manifest, session, protectedSurfaces, scopes);
+  if (!dirtyFiles.gitAvailable) {
+    return dirtyFiles;
+  }
+  if (dirtyFiles.changedPaths.length > 0 && scopes.length === 0) {
+    throw new Error(
+      `begin-slice requires at least one --scope when dirty files are present: ${dirtyFiles.changedPaths.join(', ')}`,
+    );
+  }
+  if (dirtyFiles.outOfScopeFiles.length > 0) {
+    throw new Error(
+      `begin-slice dirty tree has files outside declared scope: ${dirtyFiles.outOfScopeFiles.join(', ')}`,
+    );
+  }
+  return dirtyFiles;
+}
+
 function beginSlice(options) {
   const scopes = normalizeScopes(options.scope);
   const hypothesis = String(options.hypothesis || '').trim();
-  if (scopes.length === 0) {
-    throw new Error('begin-slice requires at least one --scope');
-  }
+  const hypothesisCheck = String(options.check || '').trim() || null;
   if (!hypothesis) {
     throw new Error('begin-slice requires --hypothesis');
   }
 
-  const session = loadSession();
-  transitionSession(session, 'scoping', 'active');
-  session.session.hypothesis = hypothesis;
-  session.session.writable_scope = scopes;
-  session.session.validation_plan = [];
-  session.session.validation_result = null;
-  session.session.closeout_ready = false;
-  session.session.blocked_reason = null;
-  session.session.external_blockers = [];
-  session.next_step = null;
+  return withSessionLock('begin-slice', () => {
+    const state = loadWorkflowState();
+    const session = state.session;
+    const dirtyFiles = assertBeginSliceDirtyTreeAllowed(
+      state.manifest,
+      session,
+      state.protectedSurfaces,
+      scopes,
+    );
+    if (scopes.length === 0) {
+      throw new Error('begin-slice requires at least one --scope');
+    }
 
-  const entry = {
-    type: 'begin-slice',
-    at: session.session.updated_at,
-    scope: scopes,
-    hypothesis,
-  };
-  session.history.push(entry);
-  saveSession(session);
+    transitionSession(session, 'scoping', 'active');
+    session.session.slice_id = createSliceId();
+    session.session.hypothesis = hypothesis;
+    session.session.hypothesis_check = hypothesisCheck;
+    session.session.hypothesis_outcome = null;
+    session.session.writable_scope = scopes;
+    session.session.protected_surfaces_consulted = true;
+    session.session.protected_surface_exceptions = [];
+    session.session.validation_plan = [];
+    session.session.validation_result = null;
+    session.session.closeout_ready = false;
+    session.session.blocked_reason = null;
+    session.session.external_blockers = [];
+    session.next_step = null;
 
-  return {
-    command: 'begin-slice',
-    scope: scopes,
-    hypothesis,
-    session,
-    markdown: renderMarkdownSlice({
+    const entry = {
+      type: 'begin-slice',
+      at: session.session.updated_at,
+      slice_id: session.session.slice_id,
+      scope: scopes,
+      hypothesis,
+      hypothesis_check: hypothesisCheck,
+    };
+    session.history.push(entry);
+    saveSession(session);
+    appendDecisionLog({
+      event: 'begin-slice',
+      at: session.session.updated_at,
+      slice_id: session.session.slice_id,
+      lane: session.session.active_lane,
+      scope: scopes,
+      hypothesis,
+      hypothesis_check: hypothesisCheck,
+    });
+
+    return {
+      ok: true,
       command: 'begin-slice',
       scope: scopes,
       hypothesis,
-    }),
-  };
+      hypothesisCheck,
+      dirtyFiles,
+      session,
+      markdown: renderMarkdownSlice({
+        command: 'begin-slice',
+        scope: scopes,
+        hypothesis,
+      }),
+    };
+  });
 }
 
 function validateCommand(options) {
-  const kind = String(options.kind || '').trim();
   const commandText = String(options.command || '').trim();
-  if (!kind) {
-    throw new Error('validate requires --kind');
-  }
+  const run = isTrue(options.run);
 
-  const session = loadSession();
-  transitionSession(session, 'validating', 'active');
-  if (!session.session.validation_plan.includes(kind)) {
-    session.session.validation_plan.push(kind);
-  }
-  session.session.validation_result = getValidationResultWithExternalBlockers(
-    'in-progress',
-    getExternalBlockers(session),
-  );
+  return withSessionLock('validate', () => {
+    const state = loadWorkflowState();
+    const session = state.session;
+    const kind = normalizeValidationKind(options.kind, state.manifest);
+    transitionSession(session, 'validating', 'active');
+    if (!session.session.validation_plan.includes(kind)) {
+      session.session.validation_plan.push(kind);
+    }
 
-  const entry = {
-    kind,
-    command: commandText || null,
-    at: session.session.updated_at,
-    status: 'recorded',
-  };
-  session.validation_log.push(entry);
-  session.history.push({
-    type: 'validate',
-    at: session.session.updated_at,
-    kind,
+    const execution = run ? runValidationCommand(commandText) : null;
+    const passed = execution ? execution.exit_code === 0 : false;
+    if (execution) {
+      session.session.validation_result = passed
+        ? getValidationResultWithExternalBlockers(
+            'passed',
+            getExternalBlockers(session),
+          )
+        : 'failed';
+      session.session.closeout_ready = passed;
+    } else {
+      session.session.validation_result = getValidationResultWithExternalBlockers(
+        'in-progress',
+        getExternalBlockers(session),
+      );
+    }
+
+    const entry = {
+      id: `val-${randomUUID().slice(0, 8)}`,
+      kind,
+      command: commandText || null,
+      at: session.session.updated_at,
+      status: execution ? (passed ? 'passed' : 'failed') : 'recorded',
+      evidence: [],
+    };
+    if (execution) {
+      entry.execution = execution;
+      session.command_log.push({
+        command: commandText,
+        outcome: passed ? 'pass' : 'fail',
+        at: execution.at,
+        exit_code: execution.exit_code,
+        duration_ms: execution.duration_ms,
+      });
+    }
+    session.validation_log.push(entry);
+    session.history.push({
+      type: 'validate',
+      at: session.session.updated_at,
+      kind,
+      run,
+      status: entry.status,
+    });
+    saveSession(session);
+
+    return {
+      ok: !execution || passed,
+      command: 'validate',
+      run,
+      validation: entry,
+      session,
+    };
   });
-  saveSession(session);
-
-  return {
-    command: 'validate',
-    validation: entry,
-    session,
-  };
 }
 
 function recordPass(options) {
@@ -637,32 +1220,35 @@ function recordPass(options) {
     throw new Error('record-pass requires --command');
   }
 
-  const session = loadSession();
-  transitionSession(session, 'validating', 'active');
-  session.session.validation_result = getValidationResultWithExternalBlockers(
-    'passed',
-    getExternalBlockers(session),
-  );
-  session.session.closeout_ready = true;
+  return withSessionLock('record-pass', () => {
+    const session = loadSession();
+    transitionSession(session, 'validating', 'active');
+    session.session.validation_result = getValidationResultWithExternalBlockers(
+      'passed',
+      getExternalBlockers(session),
+    );
+    session.session.closeout_ready = true;
 
-  const entry = {
-    command: commandText,
-    outcome: 'pass',
-    at: session.session.updated_at,
-  };
-  session.command_log.push(entry);
-  session.history.push({
-    type: 'record-pass',
-    at: session.session.updated_at,
-    command: commandText,
+    const entry = {
+      command: commandText,
+      outcome: 'pass',
+      at: session.session.updated_at,
+    };
+    session.command_log.push(entry);
+    session.history.push({
+      type: 'record-pass',
+      at: session.session.updated_at,
+      command: commandText,
+    });
+    saveSession(session);
+
+    return {
+      ok: true,
+      command: 'record-pass',
+      entry,
+      session,
+    };
   });
-  saveSession(session);
-
-  return {
-    command: 'record-pass',
-    entry,
-    session,
-  };
 }
 
 function recordSkip(options) {
@@ -676,48 +1262,61 @@ function recordSkip(options) {
     throw new Error('record-skip requires --reason');
   }
 
-  const session = loadSession();
-  if (blocking) {
-    transitionSession(session, 'blocked', 'blocked');
-    session.session.validation_result = 'skipped-blocking';
-    session.session.closeout_ready = false;
-    session.session.blocked_reason = reason;
-  } else {
-    transitionSession(session, 'validating', 'active');
-    session.session.blocked_reason = null;
-    getExternalBlockers(session).push({
+  return withSessionLock('record-skip', () => {
+    const session = loadSession();
+    if (blocking) {
+      transitionSession(session, 'blocked', 'blocked');
+      session.session.validation_result = 'skipped-blocking';
+      session.session.closeout_ready = false;
+      session.session.blocked_reason = reason;
+    } else {
+      transitionSession(session, 'validating', 'active');
+      session.session.blocked_reason = null;
+      getExternalBlockers(session).push({
+        command: commandText,
+        reason,
+        at: session.session.updated_at,
+      });
+      session.session.validation_result = getValidationResultWithExternalBlockers(
+        session.session.closeout_ready ? 'passed' : 'in-progress',
+        getExternalBlockers(session),
+      );
+    }
+
+    const entry = {
       command: commandText,
+      outcome: 'skip',
+      blocking,
       reason,
       at: session.session.updated_at,
+    };
+    session.command_log.push(entry);
+    session.history.push({
+      type: 'record-skip',
+      at: session.session.updated_at,
+      command: commandText,
+      blocking,
+      reason,
     });
-    session.session.validation_result = getValidationResultWithExternalBlockers(
-      session.session.closeout_ready ? 'passed' : 'in-progress',
-      getExternalBlockers(session),
-    );
-  }
+    saveSession(session);
+    if (blocking) {
+      appendDecisionLog({
+        event: 'blocking-skip',
+        at: session.session.updated_at,
+        slice_id: session.session.slice_id,
+        lane: session.session.active_lane,
+        command: commandText,
+        reason,
+      });
+    }
 
-  const entry = {
-    command: commandText,
-    outcome: 'skip',
-    blocking,
-    reason,
-    at: session.session.updated_at,
-  };
-  session.command_log.push(entry);
-  session.history.push({
-    type: 'record-skip',
-    at: session.session.updated_at,
-    command: commandText,
-    blocking,
-    reason,
+    return {
+      ok: true,
+      command: 'record-skip',
+      entry,
+      session,
+    };
   });
-  saveSession(session);
-
-  return {
-    command: 'record-skip',
-    entry,
-    session,
-  };
 }
 
 function recordCandidate(options) {
@@ -731,31 +1330,93 @@ function recordCandidate(options) {
     throw new Error('record-candidate requires --reason');
   }
 
-  const session = loadSession();
-  touchSession(session);
+  return withSessionLock('record-candidate', () => {
+    const session = loadSession();
+    touchSession(session);
 
-  const entry = {
-    candidate,
-    status,
-    reason,
-    at: session.session.updated_at,
-  };
-  session.candidate_log.push(entry);
-  session.next_step = entry;
-  session.history.push({
-    type: 'record-candidate',
-    candidate,
-    status,
-    reason,
-    at: session.session.updated_at,
+    const entry = {
+      candidate,
+      status,
+      reason,
+      at: session.session.updated_at,
+    };
+    session.candidate_log.push(entry);
+    session.next_step = entry;
+    session.history.push({
+      type: 'record-candidate',
+      candidate,
+      status,
+      reason,
+      at: session.session.updated_at,
+    });
+    saveSession(session);
+
+    return {
+      ok: true,
+      command: 'record-candidate',
+      entry,
+      session,
+    };
   });
-  saveSession(session);
+}
 
-  return {
-    command: 'record-candidate',
-    entry,
-    session,
-  };
+function recordProtectedSurface(options) {
+  const surface = normalizePath(options.surface);
+  const reason = String(options.reason || '').trim();
+  if (!surface) {
+    throw new Error('record-protected-surface requires --surface <path>');
+  }
+  if (!reason) {
+    throw new Error('record-protected-surface requires --reason <text>');
+  }
+
+  return withSessionLock('record-protected-surface', () => {
+    const protectedSurfaces = loadProtectedSurfaces();
+    const protectedSurfacePatterns = getProtectedSurfacePatterns(protectedSurfaces);
+    if (!hasMatchingPathPattern(protectedSurfacePatterns, surface)) {
+      throw new Error(`path is not a protected surface: ${surface}`);
+    }
+
+    const session = loadSession();
+    touchSession(session);
+    session.session.protected_surfaces_consulted = true;
+
+    const existingIndex = getProtectedSurfaceExceptions(session).findIndex(
+      (entry) => normalizePath(entry.surface) === surface,
+    );
+    const entry = {
+      surface,
+      reason,
+      at: session.session.updated_at,
+    };
+    if (existingIndex === -1) {
+      getProtectedSurfaceExceptions(session).push(entry);
+    } else {
+      getProtectedSurfaceExceptions(session)[existingIndex] = entry;
+    }
+    session.history.push({
+      type: 'record-protected-surface',
+      at: session.session.updated_at,
+      surface,
+      reason,
+    });
+    saveSession(session);
+    appendDecisionLog({
+      event: 'protected-surface-exception',
+      at: session.session.updated_at,
+      slice_id: session.session.slice_id,
+      lane: session.session.active_lane,
+      surface,
+      reason,
+    });
+
+    return {
+      ok: true,
+      command: 'record-protected-surface',
+      entry,
+      session,
+    };
+  });
 }
 
 function suggestNextFromState(manifest, session) {
@@ -875,6 +1536,10 @@ function suggestNext() {
   };
 }
 
+function buildProtectedSurfaceBlockedReason(paths) {
+  return `Protected surface changes require a recorded exception: ${paths.join(', ')}`;
+}
+
 function tryGitStatus() {
   try {
     const branch = execFileSync('git', ['branch', '--show-current'], {
@@ -921,65 +1586,113 @@ function buildGeneratedDocs(manifest, session) {
 }
 
 function refreshWorkflow() {
-  const state = loadWorkflowState();
-  const docs = buildGeneratedDocs(state.manifest, state.session);
-  ensureDir(GENERATED_DIR);
-  writeText(CURRENT_SLICE_PATH, `${docs.currentSlice}\n`);
-  writeText(NEXT_SESSION_PROMPT_PATH, `${docs.nextSessionPrompt}\n`);
-  writeText(GIT_PREFLIGHT_PATH, `${docs.gitPreflight}\n`);
-  return {
-    command: 'refresh',
-    outputs: [
-      CURRENT_SLICE_PATH,
-      NEXT_SESSION_PROMPT_PATH,
-      GIT_PREFLIGHT_PATH,
-    ],
-    session: state.session,
-    suggestion: suggestNextFromState(state.manifest, state.session),
-  };
+  return withSessionLock('refresh', () => {
+    const state = loadWorkflowState();
+    const docs = buildGeneratedDocs(state.manifest, state.session);
+    const lineBudgets = inspectGeneratedDocLineBudgets(state.manifest, docs);
+    ensureDir(GENERATED_DIR);
+    writeText(CURRENT_SLICE_PATH, `${docs.currentSlice}\n`);
+    writeText(NEXT_SESSION_PROMPT_PATH, `${docs.nextSessionPrompt}\n`);
+    writeText(GIT_PREFLIGHT_PATH, `${docs.gitPreflight}\n`);
+    return {
+      ok: lineBudgets.all_within_budget,
+      command: 'refresh',
+      outputs: [
+        CURRENT_SLICE_PATH,
+        NEXT_SESSION_PROMPT_PATH,
+        GIT_PREFLIGHT_PATH,
+      ],
+      lineBudgets,
+      session: state.session,
+      suggestion: suggestNextFromState(state.manifest, state.session),
+    };
+  });
 }
 
-function closeoutWorkflow() {
-  const state = loadWorkflowState();
-  transitionSession(state.session, 'closeout', 'closed');
-  state.session.session.closeout_ready = true;
-  state.session.history.push({
-    type: 'closeout',
-    at: state.session.session.updated_at,
-  });
+function closeoutWorkflow(options = {}) {
+  const outcome = normalizeCloseoutOutcome(options);
+  return withSessionLock('closeout', () => {
+    const state = loadWorkflowState();
+    if (!state.session.session.hypothesis) {
+      throw new Error('closeout requires an active hypothesis');
+    }
+    if (state.session.session.blocked_reason) {
+      throw new Error(
+        `closeout is blocked: ${state.session.session.blocked_reason}`,
+      );
+    }
+    if (!state.session.session.closeout_ready) {
+      throw new Error(
+        'closeout requires a passing validation outcome before completion',
+      );
+    }
+    if (!isPassLikeValidationResult(state.session.session.validation_result)) {
+      throw new Error(
+        `closeout requires a pass-like validation result; received ${state.session.session.validation_result || 'none'}`,
+      );
+    }
 
-  const summary = buildCloseoutSummary(state.manifest, state.session);
-  appendDecisionLog({
-    at: state.session.session.updated_at,
-    lane: state.session.session.active_lane,
-    hypothesis: state.session.session.hypothesis,
-    scope: state.session.session.writable_scope,
-    validation_result: state.session.session.validation_result,
-    external_blockers: getExternalBlockers(state.session),
-    blocked_reason: state.session.session.blocked_reason,
-    next_candidate: getNextCandidate(state.session),
-    next_step: suggestNextFromState(state.manifest, state.session),
-  });
+    transitionSession(state.session, 'closeout', 'closed');
+    state.session.session.closeout_ready = true;
+    state.session.session.hypothesis_outcome = outcome;
+    state.session.history.push({
+      type: 'closeout',
+      at: state.session.session.updated_at,
+      outcome,
+    });
 
-  saveSession(state.session);
-  const refreshResult = refreshWorkflow();
-  return {
-    command: 'closeout',
-    summary,
-    refresh: refreshResult.outputs,
-    session: state.session,
-    markdown: renderMarkdownCloseout({
-      session: state.session,
+    const summary = buildCloseoutSummary(state.manifest, state.session);
+    appendDecisionLog({
+      event: 'closeout',
+      at: state.session.session.updated_at,
+      slice_id: state.session.session.slice_id,
+      lane: state.session.session.active_lane,
+      hypothesis: state.session.session.hypothesis,
+      hypothesis_check: state.session.session.hypothesis_check,
+      hypothesis_outcome: state.session.session.hypothesis_outcome,
+      scope: state.session.session.writable_scope,
+      validation_result: state.session.session.validation_result,
+      external_blockers: getExternalBlockers(state.session),
+      blocked_reason: state.session.session.blocked_reason,
+      next_candidate: getNextCandidate(state.session),
+      next_step: suggestNextFromState(state.manifest, state.session),
+    });
+
+    saveSession(state.session);
+    const docs = buildGeneratedDocs(state.manifest, state.session);
+    writeText(CURRENT_SLICE_PATH, `${docs.currentSlice}\n`);
+    writeText(NEXT_SESSION_PROMPT_PATH, `${docs.nextSessionPrompt}\n`);
+    writeText(GIT_PREFLIGHT_PATH, `${docs.gitPreflight}\n`);
+    return {
+      ok: true,
+      command: 'closeout',
       summary,
-    }),
-  };
+      refresh: [
+        CURRENT_SLICE_PATH,
+        NEXT_SESSION_PROMPT_PATH,
+        GIT_PREFLIGHT_PATH,
+      ],
+      session: state.session,
+      markdown: renderMarkdownCloseout({
+        session: state.session,
+        summary,
+      }),
+    };
+  });
 }
 
 function buildCloseoutSummary(manifest, session) {
   const parts = [];
   parts.push(`Workflow: ${manifest.name}`);
   parts.push(`Lane: ${session.session.active_lane || 'unassigned'}`);
+  parts.push(`Slice ID: ${session.session.slice_id || 'not recorded'}`);
   parts.push(`Hypothesis: ${session.session.hypothesis || 'not recorded'}`);
+  parts.push(
+    `Hypothesis check: ${session.session.hypothesis_check || 'not recorded'}`,
+  );
+  parts.push(
+    `Hypothesis outcome: ${session.session.hypothesis_outcome || 'not recorded'}`,
+  );
   parts.push(
     `Scope: ${session.session.writable_scope.join(', ') || 'not recorded'}`,
   );
@@ -1007,114 +1720,233 @@ function buildCloseoutSummary(manifest, session) {
   return parts.join('\n');
 }
 
-function precommitWorkflow() {
-  const state = loadWorkflowState();
-  const expectedDocs = buildGeneratedDocs(state.manifest, state.session);
-  const generatedDocs = generatedDocsAreFresh(expectedDocs);
-  const changedFiles = inspectChangedFiles(state.manifest, state.session);
-  const items = [
-    { text: 'Manifest is present', done: pathExists(MANIFEST_PATH) },
-    { text: 'Active session file is present', done: pathExists(SESSION_PATH) },
-    {
-      text: 'Hypothesis is recorded',
-      done: Boolean(state.session.session.hypothesis),
-    },
-    {
-      text: 'Writable scope is recorded',
-      done: state.session.session.writable_scope.length > 0,
-    },
-    {
-      text: 'At least one validation exists',
-      done: state.session.validation_log.length > 0,
-    },
-    {
-      text: 'Generated docs are up to date',
-      done: generatedDocs.allMatch,
-    },
-    {
-      text: 'Git working tree inspection is available',
-      done: changedFiles.gitAvailable,
-    },
-    {
-      text: 'Changed files stay inside the recorded writable scope or workflow sidecars',
-      done:
-        changedFiles.gitAvailable &&
-        changedFiles.outOfScopeFiles.length === 0,
-    },
-    {
-      text: 'Changed files resolve to one primary slice group plus allowed sidecars',
-      done:
-        changedFiles.gitAvailable &&
-        changedFiles.hasSinglePrimaryGroup,
-    },
-  ];
+function precommitWorkflow(options = {}) {
+  return withSessionLock('precommit', () => {
+    const strict = isTrue(options.strict);
+    const state = loadWorkflowState();
+    let session = state.session;
+    const changedFiles = inspectChangedFiles(
+      state.manifest,
+      session,
+      state.protectedSurfaces,
+    );
+    const expectedDocs = buildGeneratedDocs(state.manifest, session);
+    const generatedDocs = generatedDocsAreFresh(expectedDocs);
+    const generatedDocLineBudgets = inspectGeneratedDocLineBudgets(
+      state.manifest,
+      expectedDocs,
+    );
 
-  const notes = [];
-  if (state.session.session.blocked_reason) {
-    notes.push(`Current blocked reason: ${state.session.session.blocked_reason}`);
-  }
-  if (!pathExists(CURRENT_SLICE_PATH)) {
-    notes.push('Generated docs do not exist yet. Run scripts/workflow refresh.');
-  }
-  if (!changedFiles.gitAvailable) {
-    notes.push(
-      'Git working tree inspection is unavailable at the kit root, so change-group checks could not run.',
-    );
-  } else if (changedFiles.changedPaths.length === 0) {
-    notes.push(
-      'No staged or dirty files were found at the repo root, so precommit only verified workflow state and generated docs.',
-    );
-  } else if (changedFiles.sourceMode === 'staged') {
-    notes.push(
-      'Precommit inspected staged files first. Leave unrelated dirty files unstaged when closing one slice.',
-    );
-  } else {
-    notes.push(
-      'No staged files were found, so precommit fell back to the dirty working tree.',
-    );
-  }
-  if (!generatedDocs.allMatch) {
-    const staleDocs = [];
-    if (!generatedDocs.currentSliceMatches) {
-      staleDocs.push('workflow/state/generated/CURRENT_SLICE.md');
+    const unapprovedProtectedSurfaceFiles =
+      changedFiles.unapprovedProtectedSurfaceFiles;
+    if (unapprovedProtectedSurfaceFiles.length > 0) {
+      const blockedReason = buildProtectedSurfaceBlockedReason(
+        unapprovedProtectedSurfaceFiles,
+      );
+      if (
+        session.session.current_state !== 'blocked' ||
+        session.session.blocked_reason !== blockedReason
+      ) {
+        transitionSession(session, 'blocked', 'blocked');
+        session.session.closeout_ready = false;
+        session.session.blocked_reason = blockedReason;
+        saveSession(session);
+        appendDecisionLog({
+          event: 'auto-block',
+          at: session.session.updated_at,
+          slice_id: session.session.slice_id,
+          lane: session.session.active_lane,
+          reason: blockedReason,
+          surfaces: unapprovedProtectedSurfaceFiles,
+        });
+      }
     }
-    if (!generatedDocs.nextSessionMatches) {
-      staleDocs.push('workflow/state/generated/NEXT_SESSION_PROMPT.md');
+
+    const primaryFailure = unapprovedProtectedSurfaceFiles.length > 0
+      ? {
+          kind: 'protected_surface',
+          message: buildProtectedSurfaceBlockedReason(unapprovedProtectedSurfaceFiles),
+          files: unapprovedProtectedSurfaceFiles,
+        }
+      : null;
+    const items = [
+      { text: 'Manifest is present', done: pathExists(MANIFEST_PATH) },
+      { text: 'Active session file is present', done: pathExists(SESSION_PATH) },
+      {
+        text: 'Protected surface touches are approved or workflow-managed sidecars',
+        done: unapprovedProtectedSurfaceFiles.length === 0,
+      },
+      {
+        text: 'Hypothesis is recorded',
+        done: Boolean(session.session.hypothesis),
+      },
+      {
+        text: 'Writable scope is recorded',
+        done: session.session.writable_scope.length > 0,
+      },
+      {
+        text: 'At least one validation exists',
+        done: session.validation_log.length > 0,
+      },
+      {
+        text: 'Generated docs are up to date',
+        done: generatedDocs.allMatch,
+      },
+      {
+        text: 'Generated docs stay within configured line budgets',
+        done: generatedDocLineBudgets.all_within_budget,
+      },
+      {
+        text: 'Git working tree inspection is available',
+        done: changedFiles.gitAvailable,
+      },
+      {
+        text: 'Changed files stay inside the recorded writable scope or workflow sidecars',
+        done:
+          changedFiles.gitAvailable &&
+          changedFiles.outOfScopeFiles.length === 0,
+      },
+      {
+        text: 'Changed files resolve to one primary slice group plus allowed sidecars',
+        done:
+          changedFiles.gitAvailable &&
+          changedFiles.hasSinglePrimaryGroup,
+      },
+      {
+        text: 'Session is not blocked',
+        done: !session.session.blocked_reason,
+      },
+    ];
+
+    const notes = [];
+    if (primaryFailure) {
+      notes.push(primaryFailure.message);
     }
-    if (!generatedDocs.gitPreflightMatches) {
-      staleDocs.push('workflow/state/generated/GIT_PREFLIGHT.md');
+    if (session.session.blocked_reason) {
+      notes.push(`Current blocked reason: ${session.session.blocked_reason}`);
     }
-    notes.push(`Generated docs appear stale: ${staleDocs.join(', ')}`);
-    notes.push(
-      'If generated docs were refreshed or reformatted, rerun scripts/workflow refresh if needed and restage workflow/state/generated/* before retrying commit.',
-    );
-  }
-  if (changedFiles.outOfScopeFiles.length > 0) {
-    notes.push(
-      `Out-of-scope files: ${changedFiles.outOfScopeFiles.join(', ')}`,
-    );
-  }
-  if (!changedFiles.hasSinglePrimaryGroup && changedFiles.primaryFiles.length > 0) {
-    notes.push(
-      `Primary files do not share one common path prefix: ${changedFiles.primaryFiles.join(', ')}`,
-    );
-    notes.push(
-      'Stage one primary slice group at a time and let workflow state or generated docs ride along as sidecars.',
-    );
-  }
-  if (changedFiles.workflowSidecars.length > 0) {
-    notes.push(
-      `Workflow sidecars detected: ${changedFiles.workflowSidecars.join(', ')}`,
-    );
+    if (!pathExists(CURRENT_SLICE_PATH)) {
+      notes.push('Generated docs do not exist yet. Run scripts/workflow refresh.');
+    }
+    if (!changedFiles.gitAvailable) {
+      notes.push(
+        'Git working tree inspection is unavailable at the kit root, so change-group checks could not run.',
+      );
+    } else if (changedFiles.changedPaths.length === 0) {
+      notes.push(
+        'No staged or dirty files were found at the repo root, so precommit only verified workflow state and generated docs.',
+      );
+    } else if (changedFiles.sourceMode === 'staged') {
+      notes.push(
+        'Precommit inspected staged files first. Leave unrelated dirty files unstaged when closing one slice.',
+      );
+    } else {
+      notes.push(
+        'No staged files were found, so precommit fell back to the dirty working tree.',
+      );
+    }
+    if (!generatedDocs.allMatch) {
+      const staleDocs = [];
+      if (!generatedDocs.currentSliceMatches) {
+        staleDocs.push('workflow/state/generated/CURRENT_SLICE.md');
+      }
+      if (!generatedDocs.nextSessionMatches) {
+        staleDocs.push('workflow/state/generated/NEXT_SESSION_PROMPT.md');
+      }
+      if (!generatedDocs.gitPreflightMatches) {
+        staleDocs.push('workflow/state/generated/GIT_PREFLIGHT.md');
+      }
+      notes.push(`Generated docs appear stale: ${staleDocs.join(', ')}`);
+      notes.push(
+        'If generated docs were refreshed or reformatted, rerun scripts/workflow refresh if needed and restage workflow/state/generated/* before retrying commit.',
+      );
+    }
+    if (!generatedDocLineBudgets.all_within_budget) {
+      notes.push(
+        `Generated docs exceed line budgets: ${generatedDocLineBudgets.over_budget
+          .map((entry) => `${entry.path} has ${entry.lines} lines (max ${entry.max_lines})`)
+          .join(', ')}`,
+      );
+    }
+    if (changedFiles.outOfScopeFiles.length > 0) {
+      notes.push(
+        `Out-of-scope files: ${changedFiles.outOfScopeFiles.join(', ')}`,
+      );
+    }
+    if (!changedFiles.hasSinglePrimaryGroup && changedFiles.primaryFiles.length > 0) {
+      notes.push(
+        `Primary files do not share one common path prefix: ${changedFiles.primaryFiles.join(', ')}`,
+      );
+      notes.push(
+        'Stage one primary slice group at a time and let workflow state or generated docs ride along as sidecars.',
+      );
+    }
+    if (changedFiles.workflowSidecars.length > 0) {
+      notes.push(
+        `Workflow sidecars detected: ${changedFiles.workflowSidecars.join(', ')}`,
+      );
+    }
+    if (changedFiles.protectedSurfaceFiles.length > 0) {
+      notes.push(
+        `Protected surfaces touched: ${changedFiles.protectedSurfaceFiles.join(', ')}`,
+      );
+    }
+    if (getProtectedSurfaceExceptions(session).length > 0) {
+      notes.push(
+        `Recorded protected-surface exceptions: ${getProtectedSurfaceExceptions(session)
+          .map((entry) => `${entry.surface}: ${entry.reason}`)
+          .join('; ')}`,
+      );
+    }
+
+    const failedItems = items.filter((item) => !item.done);
+    const blockingFailure =
+      Boolean(session.session.blocked_reason) ||
+      unapprovedProtectedSurfaceFiles.length > 0;
+    const ok = !blockingFailure && (!strict || failedItems.length === 0);
+
+    return {
+      ok,
+      command: 'precommit',
+      strict,
+      items,
+      notes,
+      failed_items: failedItems.map((item) => item.text),
+      primary_failure: primaryFailure,
+      generatedDocs: {
+        freshness: generatedDocs,
+        lineBudgets: generatedDocLineBudgets,
+      },
+      changedFiles,
+      session,
+      markdown: renderMarkdownChecklist({ items, notes }),
+    };
+  });
+}
+
+function unlockWorkflow(options = {}) {
+  if (!isTrue(options.force)) {
+    throw new Error('unlock requires --force');
   }
 
+  const existing = readSessionLock();
+  if (!pathExists(SESSION_LOCK_PATH)) {
+    return {
+      ok: true,
+      command: 'unlock',
+      removed: false,
+      lock: null,
+    };
+  }
+
+  fs.rmSync(SESSION_LOCK_PATH, {
+    force: true,
+  });
   return {
-    command: 'precommit',
-    items,
-    notes,
-    changedFiles,
-    session: state.session,
-    markdown: renderMarkdownChecklist({ items, notes }),
+    ok: true,
+    command: 'unlock',
+    removed: true,
+    lock: existing,
   };
 }
 
@@ -1143,6 +1975,7 @@ module.exports = {
   precommitWorkflow,
   readFileMetadata,
   recordCandidate,
+  recordProtectedSurface,
   refreshWorkflow,
   recordPass,
   recordSkip,
@@ -1153,5 +1986,6 @@ module.exports = {
   renderMarkdownSlice,
   statusWorkflow,
   suggestNext,
+  unlockWorkflow,
   validateCommand,
 };

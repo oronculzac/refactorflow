@@ -7,9 +7,11 @@ const {
   bootstrapWorkflow,
   closeoutWorkflow,
   helpWorkflow,
+  unlockWorkflow,
   precommitWorkflow,
   readFileMetadata,
   recordCandidate,
+  recordProtectedSurface,
   refreshWorkflow,
   recordPass,
   recordSkip,
@@ -64,6 +66,13 @@ function buildHelpText(result) {
   return renderMarkdownHelp(result);
 }
 
+function finalizeResult(result, jsonMode, textRenderer) {
+  output(result, jsonMode, textRenderer);
+  if (result && result.ok === false) {
+    process.exitCode = 1;
+  }
+}
+
 function main() {
   const parsed = parseArgv(process.argv);
   const jsonMode = Boolean(parsed.options.json);
@@ -74,54 +83,62 @@ function main() {
     switch (command) {
       case 'help':
         result = helpWorkflow();
-        output(result, jsonMode, buildHelpText);
+        finalizeResult(result, jsonMode, buildHelpText);
         return;
       case 'bootstrap':
         result = bootstrapWorkflow();
         if (jsonMode) {
           result.localState = readFileMetadata(result.sessionFile);
         }
-        output(result, jsonMode, (payload) => renderMarkdownBootstrap(payload));
+        finalizeResult(result, jsonMode, (payload) => renderMarkdownBootstrap(payload));
         return;
       case 'status':
         result = statusWorkflow();
-        output(result, jsonMode, (payload) => renderMarkdownStatus(payload));
+        finalizeResult(result, jsonMode, (payload) => renderMarkdownStatus(payload));
         return;
       case 'begin-slice':
         result = beginSlice(parsed.options);
-        output(result, jsonMode, (payload) => renderMarkdownSlice(payload));
+        finalizeResult(result, jsonMode, (payload) => renderMarkdownSlice(payload));
         return;
       case 'validate':
         result = validateCommand(parsed.options);
-        output(result, jsonMode);
+        finalizeResult(result, jsonMode);
         return;
       case 'record-pass':
         result = recordPass(parsed.options);
-        output(result, jsonMode);
+        finalizeResult(result, jsonMode);
         return;
       case 'record-skip':
         result = recordSkip(parsed.options);
-        output(result, jsonMode);
+        finalizeResult(result, jsonMode);
         return;
       case 'record-candidate':
         result = recordCandidate(parsed.options);
-        output(result, jsonMode);
+        finalizeResult(result, jsonMode);
+        return;
+      case 'record-protected-surface':
+        result = recordProtectedSurface(parsed.options);
+        finalizeResult(result, jsonMode);
         return;
       case 'suggest-next':
         result = suggestNext();
-        output(result, jsonMode);
+        finalizeResult(result, jsonMode);
         return;
       case 'refresh':
         result = refreshWorkflow();
-        output(result, jsonMode);
+        finalizeResult(result, jsonMode);
         return;
       case 'closeout':
-        result = closeoutWorkflow();
-        output(result, jsonMode, (payload) => renderMarkdownCloseout(payload));
+        result = closeoutWorkflow(parsed.options);
+        finalizeResult(result, jsonMode, (payload) => renderMarkdownCloseout(payload));
         return;
       case 'precommit':
-        result = precommitWorkflow();
-        output(result, jsonMode);
+        result = precommitWorkflow(parsed.options);
+        finalizeResult(result, jsonMode);
+        return;
+      case 'unlock':
+        result = unlockWorkflow(parsed.options);
+        finalizeResult(result, jsonMode);
         return;
       default:
         throw new Error(`Unknown command: ${command}`);
